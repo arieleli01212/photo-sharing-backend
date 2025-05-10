@@ -5,7 +5,7 @@ const fs = require('fs');
 const cors = require('cors');
 const app = express();
 const PORT = 5000;
-const IP  = '192.168.0.101';
+const IP  = '127.0.0.1';
 //
 // Setup multer for image upload
 const upload = multer({
