@@ -79,12 +79,12 @@ async def websocket_endpoint(websocket: WebSocket):
     global guest_count
     await websocket.accept()
     active_connections.append(websocket)
-    guest_count = len(active_connections)            # simpler
+    guest_count = len(active_connections)
     await broadcast_guest_count()
     print("➕ connected", guest_count)
     try:
         while True:
-            await websocket.receive_text()           # keep the task alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
         active_connections.remove(websocket)
         guest_count = len(active_connections)
@@ -92,8 +92,8 @@ async def websocket_endpoint(websocket: WebSocket):
         print("➖ disconnected", guest_count)
 
 async def broadcast_guest_count() -> None:
-    stale = []                                       # sockets we can’t use any more
-    for ws in list(active_connections):             # iterate over a copy – we may edit the set
+    stale = []
+    for ws in list(active_connections):
         if ws.client_state != WebSocketState.CONNECTED:
             stale.append(ws)
             continue
@@ -101,7 +101,7 @@ async def broadcast_guest_count() -> None:
         try:
             await ws.send_json({"guestCount": guest_count})
         except RuntimeError:
-            # close already started – mark as stale
+
             stale.append(ws)
 
     for ws in stale:
