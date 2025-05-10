@@ -26,8 +26,8 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 active_connections: List[WebSocket] = []
-IP = "172.20.10.6"
-PORT = 8000
+IP = "0.0.0.0"
+PORT = 5000
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.post(
