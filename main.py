@@ -72,7 +72,7 @@ async def get_images():
 async def get_guest_count():
     return {"count": guest_count}
 
-
+#
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
