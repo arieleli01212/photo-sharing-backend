@@ -4,12 +4,13 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const app = express();
+const http    = require("http");
+const { Server } = require("socket.io");
 
 
 const IP  = '172.20.10.6';
 const PORT = 5000;
 
-let guestCount = 0;
 
 // Setup multer for image upload
 const upload = multer({
@@ -26,22 +27,27 @@ const upload = multer({
 // Allow CORS for local development
 app.use(cors());
 
-// Serve images from the uploads folder
-app.use('/uploads', express.static('uploads'));
+const server = http.createServer(app);
+const io     = new Server(server, { cors: { origin: "*" },path: "/socket.io" });
+let guestCount = 0;
 
+/* REST endpoint so the page can get the value on first paint */
 app.get("/guest", (req, res) => res.json({ count: guestCount }));
 
-/* POST ­– increment */
-app.post("/guest/increment", (req, res) => {
-  guestCount += 1;
-  res.json({ count: guestCount });
+io.on("connection", (socket) => {
+  guestCount++;
+  io.emit("guestCount", guestCount);         // broadcast to all
+  console.log("➕ connected", guestCount);
+
+  socket.on("disconnect", () => {
+    guestCount = Math.max(guestCount - 1, 0);
+    io.emit("guestCount", guestCount);
+    console.log("➖ disconnected", guestCount);
+  });
 });
 
-/* POST ­– decrement */
-app.post("/guest/decrement", (req, res) => {
-  guestCount = Math.max(guestCount - 1, 0);
-  res.json({ count: guestCount });
-});
+// Serve images from the uploads folder
+app.use('/uploads', express.static('uploads'));
 
 // Route to get list of images
 app.get('/get-images', (req, res) => {
@@ -76,6 +82,6 @@ app.post('/upload', upload.array('images', 10), (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT,"0.0.0.0", () => {
   console.log(`Server is running on http://${IP}:${PORT}`);
 });
