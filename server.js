@@ -6,7 +6,7 @@ const cors = require('cors');
 const app = express();
 const PORT = 5000;
 const IP  = '192.168.0.101';
-
+//
 // Setup multer for image upload
 const upload = multer({
   dest: 'uploads/', // Folder where uploaded images will be stored
