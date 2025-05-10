@@ -21,7 +21,7 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-IP = "127.0.0.1"
+IP = "172.20.10.6"
 PORT = 8000
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -53,8 +53,8 @@ async def get_images():
         image_files = [
             f"http://{IP}:{PORT}/uploads/{filename}"
             for filename in files
-            if filename.lower().endswith((".jpg", ".jpeg", ".png"))
+            if filename.lower()
         ]
-        return {"images": image_files}
+        return image_files
     except Exception as e:
         return {"error": str(e)}
