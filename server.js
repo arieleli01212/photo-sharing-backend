@@ -4,8 +4,12 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const app = express();
+
+
+const IP  = '172.20.10.6';
 const PORT = 5000;
-const IP  = '192.168.0.101';
+
+let guestCount = 0;
 
 // Setup multer for image upload
 const upload = multer({
@@ -24,6 +28,20 @@ app.use(cors());
 
 // Serve images from the uploads folder
 app.use('/uploads', express.static('uploads'));
+
+app.get("/guest", (req, res) => res.json({ count: guestCount }));
+
+/* POST ­– increment */
+app.post("/guest/increment", (req, res) => {
+  guestCount += 1;
+  res.json({ count: guestCount });
+});
+
+/* POST ­– decrement */
+app.post("/guest/decrement", (req, res) => {
+  guestCount = Math.max(guestCount - 1, 0);
+  res.json({ count: guestCount });
+});
 
 // Route to get list of images
 app.get('/get-images', (req, res) => {
