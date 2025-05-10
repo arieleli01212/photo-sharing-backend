@@ -5,6 +5,8 @@ from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 from typing import List
+from starlette.websockets import WebSocketState
+
 
 app = FastAPI(
     title="Image Upload API",
@@ -23,7 +25,7 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 active_connections: List[WebSocket] = []
-IP = "127.0.0.1"
+IP = "172.20.10.6"
 PORT = 8000
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -73,22 +75,30 @@ async def websocket_endpoint(websocket: WebSocket):
     global guest_count
     await websocket.accept()
     active_connections.append(websocket)
-    guest_count += 1
-
-
+    guest_count = len(active_connections)            # simpler
     await broadcast_guest_count()
-
     print("➕ connected", guest_count)
-
     try:
         while True:
-            await websocket.receive_text()
+            await websocket.receive_text()           # keep the task alive
     except WebSocketDisconnect:
         active_connections.remove(websocket)
-        guest_count = max(guest_count - 1, 0)
+        guest_count = len(active_connections)
         await broadcast_guest_count()
         print("➖ disconnected", guest_count)
 
-async def broadcast_guest_count():
-    for connection in active_connections:
-        await connection.send_json({"guestCount": guest_count})
+async def broadcast_guest_count() -> None:
+    stale = []                                       # sockets we can’t use any more
+    for ws in list(active_connections):             # iterate over a copy – we may edit the set
+        if ws.client_state != WebSocketState.CONNECTED:
+            stale.append(ws)
+            continue
+
+        try:
+            await ws.send_json({"guestCount": guest_count})
+        except RuntimeError:
+            # close already started – mark as stale
+            stale.append(ws)
+
+    for ws in stale:
+        active_connections.remove(ws)
