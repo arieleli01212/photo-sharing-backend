@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 from typing import List
+from PIL import Image, ExifTags
 
 app = FastAPI(
     title="Image Upload API",
@@ -41,6 +42,9 @@ async def upload_images(images: list[UploadFile] = File(..., description="List o
 
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
+            img = Image.open(save_path)
+            exif = {ExifTags.TAGS[k]: v for k, v in img._getexif().items() if k in ExifTags.TAGS}
+            print(exif)
 
     return JSONResponse(content="The file upload successfully")
 
