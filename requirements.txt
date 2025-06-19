@@ -2,3 +2,8 @@ fastapi
 uvicorn
 pillow
 python-multipart
+insightface==0.7.3           # face detection + ArcFace embeddings
+onnxruntime                   # CPU inference (remove if you use CUDA)
+faiss-cpu                     # vector search
+psycopg2-binary
+pgvector 
