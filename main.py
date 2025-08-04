@@ -8,7 +8,6 @@ from typing import List
 from PIL import Image, ExifTags
 from starlette.websockets import WebSocketState
 
-
 app = FastAPI(
     title="Image Upload API",
     description="API for uploading image files",
@@ -26,9 +25,11 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 active_connections: List[WebSocket] = []
-IP = "172.20.10.6"
+IP = "127.0.0.1"
 PORT = 8000
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 @app.post(
     "/upload",
@@ -36,17 +37,34 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
     description="Upload up to 10 image files (jpg, jpeg, png)."
 )
 async def upload_images(images: list[UploadFile] = File(..., description="List of image files")):
+
     for image in images:
         if not image.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
             raise HTTPException(status_code=400, detail="Only JPG, JPEG, and PNG files are allowed.")
 
-        save_path = os.path.join(UPLOAD_DIR, image.filename)
+        image.file.seek(0, os.SEEK_END)
+        size = image.file.tell()
+        image.file.seek(0)
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Max size is 5MB.")
+
+        safe_filename = os.path.basename(image.filename)
+        save_path = os.path.join(UPLOAD_DIR, safe_filename)
 
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
-            img = Image.open(save_path)
-            exif = {ExifTags.TAGS[k]: v for k, v in img._getexif().items() if k in ExifTags.TAGS}
-            print(exif)
+        img = Image.open(save_path)
+
+        # Only try to extract EXIF for JPEG images
+        if img.format in ["JPEG", "JPG"]:
+            exif_data = getattr(img, "_getexif", lambda: None)()
+            if exif_data is not None:
+                exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_data.items() if k in ExifTags.TAGS}
+                print(exif)
+            else:
+                print("No EXIF data found.")
+        else:
+            print("EXIF extraction skipped (not a JPEG image).")
 
     return JSONResponse(content="The file upload successfully")
 
@@ -58,21 +76,19 @@ async def upload_images(images: list[UploadFile] = File(..., description="List o
 async def get_images():
     try:
         files = os.listdir(UPLOAD_DIR)
+        allowed_exts = ('.jpg', '.jpeg', '.png')
         image_files = [
             f"http://{IP}:{PORT}/uploads/{filename}"
             for filename in files
-            if filename.lower()
+            if filename.lower().endswith(allowed_exts)
         ]
         return image_files
     except Exception as e:
         return {"error": str(e)}
 
-
 @app.get("/guest")
 async def get_guest_count():
     return {"count": guest_count}
-
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
