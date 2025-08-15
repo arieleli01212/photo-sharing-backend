@@ -1,0 +1,19 @@
+# Backend Docker ignore file
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+README.md
+.env.local
+.env.development
+.pytest_cache
+.coverage
+htmlcov/
+.tox/
+.venv
+venv/
+.mypy_cache
+.DS_Store
+Thumbs.db
