@@ -1,72 +1,95 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 from typing import List
-from PIL import Image, ExifTags
-from starlette.websockets import WebSocketState
+
+from app.core.config import config
+from app.models.models import Token, GoogleToken
+from app.services.auth import AuthService, verify_token
+from app.services.websocket_manager import websocket_manager
+from app.core.utils import extract_image_metadata, get_safe_filename, is_allowed_file_type, is_file_size_valid, validate_image_content
+
+# Create upload directory
+os.makedirs(config.UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(
     title="Image Upload API",
-    description="API for uploading image files",
-    version="1.0.0"
+    description="API for uploading image files with OAuth authentication",
+    version="2.0.0"
 )
+
+# Configure CORS - restrict origins in production
+allowed_origins = ["*"]  # For development - should be restricted in production
+if config.SERVER_HOST != "127.0.0.1" and config.SERVER_HOST != "localhost":
+    # In production, specify actual frontend domains
+    allowed_origins = [
+        "https://your-wedding-frontend-domain.com",
+        "https://www.your-wedding-frontend-domain.com"
+    ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"]
 )
-guest_count = 0
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-active_connections: List[WebSocket] = []
-IP = "127.0.0.1"
-PORT = 8000
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# Mount static files
+app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
 
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+# Authentication endpoints
+@app.post("/google-login", response_model=Token)
+async def google_login(google_token: GoogleToken):
+    return await AuthService.google_login(google_token)
 
+
+@app.get("/verify-token")
+async def verify_user_token(current_user: str = Depends(verify_token)):
+    return {"username": current_user, "valid": True}
+
+# File upload endpoints
 @app.post(
     "/upload",
     summary="Upload image files",
     description="Upload up to 10 image files (jpg, jpeg, png)."
 )
-async def upload_images(images: list[UploadFile] = File(..., description="List of image files")):
-
+async def upload_images(images: list[UploadFile] = File(..., description="List of image files"), current_user: str = Depends(verify_token)):
     for image in images:
-        if not image.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+        # Validate file type
+        if not is_allowed_file_type(image.filename):
             raise HTTPException(status_code=400, detail="Only JPG, JPEG, and PNG files are allowed.")
 
+        # Validate file size
         image.file.seek(0, os.SEEK_END)
         size = image.file.tell()
         image.file.seek(0)
-        if size > MAX_FILE_SIZE:
+        
+        if not is_file_size_valid(size, config.MAX_FILE_SIZE):
             raise HTTPException(status_code=413, detail="File too large. Max size is 5MB.")
 
-        safe_filename = os.path.basename(image.filename)
-        save_path = os.path.join(UPLOAD_DIR, safe_filename)
+        # Generate unique filename to prevent conflicts and improve security
+        import uuid
+        file_extension = os.path.splitext(get_safe_filename(image.filename))[1].lower()
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        save_path = os.path.join(config.UPLOAD_DIR, unique_filename)
 
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
-        img = Image.open(save_path)
+        
+        # Validate that the uploaded file is actually an image
+        if not validate_image_content(save_path):
+            os.remove(save_path)  # Remove invalid file
+            raise HTTPException(status_code=400, detail=f"Invalid image file: {image.filename}")
+        
+        # Extract metadata and print (or store in database)
+        metadata = extract_image_metadata(save_path)
+        print(metadata)
 
-        # Only try to extract EXIF for JPEG images
-        if img.format in ["JPEG", "JPG"]:
-            exif_data = getattr(img, "_getexif", lambda: None)()
-            if exif_data is not None:
-                exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_data.items() if k in ExifTags.TAGS}
-                print(exif)
-            else:
-                print("No EXIF data found.")
-        else:
-            print("EXIF extraction skipped (not a JPEG image).")
-
-    return JSONResponse(content="The file upload successfully")
+    return JSONResponse(content={"message": "Files uploaded successfully", "count": len(images)})
 
 @app.get(
     "/get-images",
@@ -75,10 +98,10 @@ async def upload_images(images: list[UploadFile] = File(..., description="List o
 )
 async def get_images():
     try:
-        files = os.listdir(UPLOAD_DIR)
+        files = os.listdir(config.UPLOAD_DIR)
         allowed_exts = ('.jpg', '.jpeg', '.png')
         image_files = [
-            f"http://{IP}:{PORT}/uploads/{filename}"
+            f"/api/uploads/{filename}"
             for filename in files
             if filename.lower().endswith(allowed_exts)
         ]
@@ -86,39 +109,15 @@ async def get_images():
     except Exception as e:
         return {"error": str(e)}
 
+# WebSocket endpoints
 @app.get("/guest")
 async def get_guest_count():
-    return {"count": guest_count}
+    return {"count": websocket_manager.guest_count}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global guest_count
-    await websocket.accept()
-    active_connections.append(websocket)
-    guest_count = len(active_connections)            # simpler
-    await broadcast_guest_count()
-    print("➕ connected", guest_count)
-    try:
-        while True:
-            await websocket.receive_text()           # keep the task alive
-    except WebSocketDisconnect:
-        active_connections.remove(websocket)
-        guest_count = len(active_connections)
-        await broadcast_guest_count()
-        print("➖ disconnected", guest_count)
+    await websocket_manager.handle_websocket(websocket)
 
-async def broadcast_guest_count() -> None:
-    stale = []                                       # sockets we can’t use any more
-    for ws in list(active_connections):             # iterate over a copy – we may edit the set
-        if ws.client_state != WebSocketState.CONNECTED:
-            stale.append(ws)
-            continue
-
-        try:
-            await ws.send_json({"guestCount": guest_count})
-        except RuntimeError:
-            # close already started – mark as stale
-            stale.append(ws)
-
-    for ws in stale:
-        active_connections.remove(ws)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host=config.SERVER_HOST, port=config.SERVER_PORT)

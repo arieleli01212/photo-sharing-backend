@@ -2,3 +2,9 @@ fastapi
 uvicorn
 pillow
 python-multipart
+python-jose[cryptography]
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+requests
+python-dotenv
