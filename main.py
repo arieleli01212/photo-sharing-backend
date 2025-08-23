@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,11 +23,11 @@ app = FastAPI(
 
 # Configure CORS - restrict origins in production
 allowed_origins = ["*"]  # For development - should be restricted in production
-if config.SERVER_HOST != "127.0.0.1" and config.SERVER_HOST != "localhost":
+if config.SERVER_HOST != "127.0.0.1" and config.SERVER_HOST != "localhost" and config.SERVER_HOST != "0.0.0.0":
     # In production, specify actual frontend domains
     allowed_origins = [
-        "https://your-wedding-frontend-domain.com",
-        "https://www.your-wedding-frontend-domain.com"
+        "https://wedding.open-spaces.xyz",
+        "https://www.wedding.open-spaces.xyz"
     ]
 
 app.add_middleware(
@@ -96,12 +96,13 @@ async def upload_images(images: list[UploadFile] = File(..., description="List o
     summary="Get all image files",
     description="Get all image files (jpg, jpeg, png)."
 )
-async def get_images():
+async def get_images(request: Request):  # accept Request
     try:
         files = os.listdir(config.UPLOAD_DIR)
         allowed_exts = ('.jpg', '.jpeg', '.png')
+        base = str(request.base_url).rstrip("/")  # e.g., http://localhost:8000
         image_files = [
-            f"/api/uploads/{filename}"
+            f"{base}/uploads/{filename}"
             for filename in files
             if filename.lower().endswith(allowed_exts)
         ]
