@@ -6,7 +6,7 @@ on:
 
 jobs:
   test-build-deploy:
-    runs-on: [self-hosted, wedding-runner]
+    runs-on: self-hosted
     defaults:
       run:
         shell: bash
