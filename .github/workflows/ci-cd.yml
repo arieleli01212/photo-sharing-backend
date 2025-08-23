@@ -1,0 +1,48 @@
+name: ci-cd-backend
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: wedding-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-deploy:
+    runs-on: [self-hosted, wedding-runner]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ---- CI (tests) ----
+      # Python example (FastAPI). Adjust as needed.
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test deps
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      - name: Run tests
+        run: |
+          if command -v pytest >/dev/null 2>&1; then pytest -q; else echo "pytest not found, skipping"; fi
+
+      # ---- Sync working tree to deployment dir ----
+      - name: Sync to /srv/wedding/backend
+        run: |
+          rsync -a --delete --exclude='.git' ./ /srv/wedding/backend/
+
+      # ---- Build & Deploy with Compose on the server ----
+      - name: Build backend image
+        run: docker compose -f /srv/wedding/docker-compose.yml build backend
+
+      - name: Start/Update backend
+        run: docker compose -f /srv/wedding/docker-compose.yml up -d backend
+
+      - name: Cleanup dangling images
+        run: docker image prune -f
