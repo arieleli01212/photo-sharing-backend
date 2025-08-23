@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   ci-tests:
-    runs-on: [self-hosted, wedding]
+    runs-on: self-hosted
     container:
       image: python:3.11
     steps:
@@ -24,7 +24,7 @@ jobs:
           if command -v pytest >/dev/null 2>&1; then pytest -q; else echo "pytest not found, skipping"; fi
 
   build-and-deploy:
-    runs-on: [self-hosted, wedding]
+    runs-on: self-hosted
     needs: ci-tests
     steps:
       - uses: actions/checkout@v4
